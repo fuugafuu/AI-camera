@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "Assist Camera",
+  "short_name": "Camera",
+  "description": "端末内処理を優先するスマホ向け高機能カメラ",
+  "start_url": "/?mode=camera",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05080d",
+  "theme_color": "#05080d",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "カメラ",
+      "short_name": "カメラ",
+      "url": "/?mode=photo"
+    },
+    {
+      "name": "捜索",
+      "short_name": "捜索",
+      "url": "/?mode=search"
+    }
+  ]
+}
