@@ -1,3 +1,4 @@
+import { createAdvancedHub } from "./advanced.js";
 /* A.R.C. VISION - browser-only object detection HUD.
  * Visual scanner effects are decorative; measurements originate from the ML model.
  * Camera/image frames are not uploaded by this app.
@@ -53,6 +54,10 @@ let inferenceBusy = false;
 let startupSession = 0;
 let lastBleepTarget = null;
 let toastTimer = 0;
+let frameInterval = 135, smoothedInference = 120;
+let historyLastLiveLog = 0;
+let advanced = null;
+const trajectoryLength = 16;
 const ctx = el.canvas.getContext('2d', { alpha: true });
 
 function friendlyError(error) {
@@ -145,6 +150,7 @@ function leaveMode() {
   paused = false; mode = 'standby'; $('app').classList.remove('has-feed'); el.cameraText.textContent = 'カメラを起動'; el.btnCamera.classList.remove('running');
   el.feedMode.textContent = 'NO SIGNAL'; el.resolution.textContent = 'SENSOR: UNAVAILABLE';
   resetTracking();
+  advanced?.onReset();
 }
 async function startCamera() {
   if (mode === 'camera') {
@@ -228,6 +234,8 @@ async function loadImage(file) {
     const result = detector.detect(el.image);
     lastInference = performance.now() - begin;
     processDetections(result.detections || []);
+    await advanced?.onImage(el.image);
+    if(session !== startupSession) return;
     clearStandby();
     el.scanLine.classList.remove('active');
     setStatus('IMAGE ANALYZED', true);
@@ -246,15 +254,19 @@ function processVideo(token) {
     return;
   }
   const now = performance.now();
-  if (now - lastProcessed >= 115 && el.video.currentTime !== lastVideoTime) {
+  if (now - lastProcessed >= frameInterval && el.video.currentTime !== lastVideoTime) {
     inferenceBusy = true; lastProcessed = now; lastVideoTime = el.video.currentTime;
     try {
       const t0 = performance.now();
       const result = detector.detectForVideo(el.video, t0);
       lastInference = performance.now() - t0;
+      smoothedInference = smoothedInference*.85 + lastInference*.15;
+      // FPS adapts to actual measured work, capped to reduce thermal load on mobile.
+      frameInterval = Math.max(100,Math.min(380,Math.round(smoothedInference*1.65+35)));
       fpsWindow.push(performance.now());
       if (fpsWindow.length > 12) fpsWindow.shift();
       processDetections(result.detections || []);
+      advanced?.onFrame(el.video,t0);
     } catch (err) {
       console.error('A.R.C. inference error', err);
       pause(); toast('連続解析でエラーが発生しました。いったん停止してください。', true);
@@ -280,21 +292,29 @@ function processDetections(raw) {
     box: d.boundingBox
   })).filter(d => d.box && d.score >= threshold).sort((a,b) => b.score-a.score).slice(0,18);
   const matched = new Set();
+  const sampleTime = performance.now();
   shown = candidates.map(obj => {
     const centerX = (obj.box.originX + obj.box.width/2)/src.width;
     const centerY = (obj.box.originY + obj.box.height/2)/src.height;
     let best = null, bestValue = -1;
     for (const previous of tracks.values()) {
       if (previous.label !== obj.label || matched.has(previous.id) || serial-previous.seen > 5) continue;
-      const close = Math.hypot(centerX-previous.cx,centerY-previous.cy);
+      // Predict the prior position using velocity to keep IDs through motion and crossings.
+      const frames = Math.min(4, serial - previous.seen);
+      const px = Math.max(0,Math.min(1,previous.cx + (previous.vx||0)*frames));
+      const py = Math.max(0,Math.min(1,previous.cy + (previous.vy||0)*frames));
+      const close = Math.hypot(centerX-px,centerY-py);
       const io = overlap(obj.box,previous.box);
-      if (close > .28 && io < .03) continue;
-      const rank = io*2.4 + Math.max(0,.28-close);
+      if (close > .34 && io < .02) continue;
+      const rank = io*2 + Math.max(0,.34-close)*1.4;
       if (rank > bestValue) { best = previous; bestValue = rank; }
     }
     const id = best ? best.id : nextId++;
     matched.add(id);
-    const t = { ...obj, id, cx:centerX, cy:centerY, seen:serial };
+    const vx = best ? .58*(best.vx||0) + .42*(centerX-best.cx)/Math.max(1,serial-best.seen) : 0;
+    const vy = best ? .58*(best.vy||0) + .42*(centerY-best.cy)/Math.max(1,serial-best.seen) : 0;
+    const trail = best ? [...(best.trail||[]),{x:best.cx,y:best.cy}].slice(-trajectoryLength) : [];
+    const t = { ...obj, id, cx:centerX, cy:centerY, seen:serial, vx, vy, trail, time:sampleTime };
     tracks.set(id,t);
     return t;
   });
@@ -308,6 +328,7 @@ function processDetections(raw) {
   if (currentTarget && soundOn && lastBleepTarget !== currentTarget.id) { beep(); lastBleepTarget = currentTarget.id; }
   if (!currentTarget) lastBleepTarget = null;
   updateResults(); draw();
+  advanced?.onDetections(shown, mode === 'camera', currentTarget);
 }
 function activeTarget() { return shown.find(t=>t.id===chosenId) || null; }
 function positionLabel(cx,cy) {
@@ -363,6 +384,7 @@ function lockTarget(id) {
   chosenId=id; autoLock=false; el.btnTracking.classList.remove('active'); el.btnTracking.setAttribute('aria-pressed','false');
   updateResults(); draw();
   if (soundOn) beep();
+  advanced?.onLock(activeTarget());
 }
 function coverRect(srcW,srcH,w,h) {
   const scale=Math.max(w/srcW,h/srcH);
@@ -374,6 +396,12 @@ function visualBox(t, w, h) {
   let x=map.x+t.box.originX*map.scale;
   if (mode==='camera' && facing==='user') x=w-(map.x+(t.box.originX+t.box.width)*map.scale);
   return {x, y:map.y+t.box.originY*map.scale, w:t.box.width*map.scale, h:t.box.height*map.scale};
+}
+function mapPoint(nx,ny,w,h){
+  const src=source(); if(!src)return {x:nx*w,y:ny*h};
+  const fit=coverRect(src.width,src.height,w,h);
+  return {x:mode==='camera'&&facing==='user'?w-(fit.x+nx*src.width*fit.scale):fit.x+nx*src.width*fit.scale,
+          y:fit.y+ny*src.height*fit.scale};
 }
 function roundedFill(context,x,y,w,h,r=4) {
   context.beginPath(); context.roundRect(x,y,Math.max(1,w),Math.max(1,h),r);context.fill();
@@ -421,9 +449,26 @@ function draw() {
       ctx.strokeStyle='#ffc3879a';ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(cx,cy,14,0,Math.PI*2);ctx.moveTo(cx-22,cy);ctx.lineTo(cx-7,cy);ctx.moveTo(cx+7,cy);ctx.lineTo(cx+22,cy);ctx.moveTo(cx,cy-22);ctx.lineTo(cx,cy-7);ctx.moveTo(cx,cy+7);ctx.lineTo(cx,cy+22);ctx.stroke();
       ctx.fillStyle='#ffd59a';ctx.fillRect(cx-1.5,cy-1.5,3,3);
+      // Predicted motion is visual-only screen position, not measured speed/distance.
+      if(mode==='camera' && Math.hypot(t.vx,t.vy)>.0007){
+        const flip = facing==='user' ? -1 : 1;
+        const dx=flip*t.vx*w*2,dy=t.vy*h*2;
+        const ax=cx+Math.max(-65,Math.min(65,dx)),ay=cy+Math.max(-65,Math.min(65,dy));
+        ctx.strokeStyle='#ffc387';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(ax,ay);ctx.stroke();ctx.setLineDash([]);
+        ctx.beginPath();ctx.arc(ax,ay,6,0,Math.PI*2);ctx.stroke();
+        ctx.font='9px ui-monospace, monospace';ctx.fillStyle='#ffd49c';ctx.fillText('PREDICT',ax+9,ay-7);
+      }
+      if(mode==='camera' && t.trail?.length>1){
+        ctx.strokeStyle='#ffb96790';ctx.lineWidth=1.2;ctx.beginPath();
+        for(let i=0;i<t.trail.length;i++){
+          const pt=t.trail[i];const px=mapPoint(pt.x,pt.y,w,h);
+          if(i===0)ctx.moveTo(px.x,px.y);else ctx.lineTo(px.x,px.y);
+        }ctx.lineTo(cx,cy);ctx.stroke();
+      }
     }
     ctx.restore();
   }
+  advanced?.drawOverlay(ctx,w,h);
 }
 function pause(){if(mode!=='camera')return;paused=!paused;el.btnPause.classList.toggle('active',paused);el.btnPause.setAttribute('aria-pressed',String(paused));el.btnPause.innerHTML=`<span class="chip-dot"></span> ${paused?'再開':'一時停止'}`;setStatus(paused?'SCAN PAUSED':'LIVE SCANNING',!paused);el.scanLine.classList.toggle('active',!paused);if(!paused)lastProcessed=0;}
 async function beep() {
@@ -489,5 +534,12 @@ window.addEventListener('pagehide',stopCameraTracks);
 if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){
   navigator.serviceWorker.register('./sw.js').catch(err=>console.info('Offline cache not available:',err));
 }
+advanced=createAdvancedHub({
+  getSource:source, getMode:()=>mode, getTracks:()=>shown, getSelected:activeTarget,
+  getFacing:()=>facing, getThreshold:()=>threshold, getPaused:()=>paused,
+  mapPoint, coverRect, lockTarget, setStatus, toast, beep,
+  refresh:draw, onPause:()=>{if(mode==='camera')pause();},
+  getPerformance:()=>({frameInterval,smoothedInference,lastInference})
+});
 updateResults();
 draw();

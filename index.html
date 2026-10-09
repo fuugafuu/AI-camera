@@ -38,7 +38,7 @@
    <header class="topbar">
      <div class="brand">
        <div class="brand-mark" aria-hidden="true"><span></span></div>
-       <div class="brand-copy"><div class="brand-name">A.R.C.<span class="brand-suffix">// 07</span></div><div class="brand-subtitle">ADVANCED RECONNAISSANCE CORE</div></div>
+       <div class="brand-copy"><div class="brand-name">A.R.C.<span class="brand-suffix">// V3</span></div><div class="brand-subtitle">ADVANCED RECONNAISSANCE CORE</div></div>
      </div>
      <div class="header-center"><span class="micro">OPTICAL INTELLIGENCE</span><span class="system-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
      <div class="top-status"><span class="live-dot" id="liveDot"></span><span id="statusText">STANDBY</span><span class="header-time" id="clock">--:--:--</span></div>
@@ -78,8 +78,33 @@
    </aside>
 
    <div class="objects-panel" id="objectsPanel"><div class="objects-label">DETECTED OBJECTS <span id="objectsCounter">00</span></div><div class="objects-list" id="objectsList"><span class="empty-objects">NO OBJECTS TRACKED</span></div></div>
-   <div class="coord-left">A.R.C. / OPTICS v1.0 · LOCAL PROCESSING</div><div class="coord-right" id="resolutionTag">SENSOR: UNAVAILABLE</div>
+   <div class="coord-left">A.R.C. / VISION v3.0 · V2 + V3 · LOCAL PROCESSING</div><div class="coord-right" id="resolutionTag">SENSOR: UNAVAILABLE</div>
 
+   <section class="upgrade-panel" id="upgradePanel" aria-label="高度解析モード">
+     <div class="upgrade-heading"><span><b class="upgrade-beacon">●</b> A.R.C. INTELLIGENCE // V3.0</span><span class="upgrade-local">ON-DEVICE · PRIVATE</span></div>
+     <div class="upgrade-modes" role="group" aria-label="解析モード選択">
+       <button class="upgrade-mode" id="btnPose" aria-pressed="false"><span class="mode-symbol">◎</span><span>BODY SCAN</span><small>人体骨格</small></button>
+       <button class="upgrade-mode" id="btnSegment" aria-pressed="false"><span class="mode-symbol">◈</span><span>OUTLINE</span><small>輪郭抽出</small></button>
+       <button class="upgrade-mode" id="btnGesture" aria-pressed="false"><span class="mode-symbol">✋</span><span>GESTURE</span><small>手の操作</small></button>
+       <button class="upgrade-mode" id="btnOCR"><span class="mode-symbol">▤</span><span>OCR SCAN</span><small>日本語/英語</small></button>
+       <button class="upgrade-mode active" id="btnRadar" aria-pressed="true"><span class="mode-symbol">◉</span><span>RADAR</span><small>相対位置</small></button>
+       <button class="upgrade-mode" id="btnHistory"><span class="mode-symbol">▥</span><span>HISTORY</span><small>端末内履歴</small></button>
+     </div>
+     <div class="upgrade-telemetry"><span id="upgradeMessage">拡張AIは各モードの起動時に読み込みます</span><span id="perfText">AUTO · -- ms</span></div>
+   </section>
+   <section class="radar-module" id="radarModule" aria-label="画面内相対位置レーダー">
+      <div class="radar-head">TACTICAL RADAR <span id="radarCount">0 SIGNAL</span></div>
+      <canvas id="radarCanvas" width="280" height="160" aria-label="対象の画面内相対位置。実距離や周囲360度は測定しません"></canvas>
+      <div class="radar-disclaimer">CAMERA FIELD ONLY / NO DEPTH</div>
+   </section>
+   <div class="upgrade-drawer" id="upgradeDrawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+     <div class="drawer-backdrop" id="drawerBackdrop"></div>
+     <div class="drawer-card">
+       <div class="drawer-top"><div><span>LOCAL INTELLIGENCE ARCHIVE</span><h2 id="drawerTitle">SCAN HISTORY</h2></div><button id="btnDrawerClose" class="drawer-close" aria-label="閉じる">×</button></div>
+       <div class="drawer-body" id="drawerBody"></div>
+       <div class="drawer-actions" id="drawerActions"></div>
+     </div>
+   </div>
    <div class="bottom-bar">
      <div class="bottom-primary">
        <button class="btn btn-primary" id="btnCamera"><span class="btn-icon" aria-hidden="true">◉</span><span id="cameraText">カメラを起動</span><small>LIVE SCAN</small></button>
