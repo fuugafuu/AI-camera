@@ -1,18 +1,103 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#05080d" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Assist Camera" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Assist Camera</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#060d15">
+  <meta name="description" content="端末内AI物体認識スキャナー。映像をアップロードせず、スマートフォンのブラウザーだけで解析します。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./assets/icon.svg">
+  <link rel="stylesheet" href="./styles.css">
+  <title>A.R.C. // TACTICAL VISION</title>
+</head>
+<body>
+ <main class="app" id="app">
+   <div class="backdrop"><div class="backdrop-grid"></div><div class="backdrop-glow"></div></div>
+   <div class="viewport" id="viewport">
+     <video id="camera" playsinline muted autoplay aria-label="カメラ映像"></video>
+     <img id="still" alt="解析対象の画像" hidden>
+     <canvas id="overlay" aria-label="物体検出の表示"></canvas>
+     <div class="feed-shade"></div>
+     <div class="scan-line" id="scanLine"></div>
+     <div class="view-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+     <div class="standby" id="standby">
+       <div class="reactor">
+         <span class="reactor-outer"></span><span class="reactor-ticks"></span><span class="reactor-ring"></span>
+         <span class="reactor-core"><span class="reactor-symbol">A</span></span>
+       </div>
+       <p class="standby-eyebrow" id="standbyEyebrow">SYSTEM INITIALIZED</p>
+       <h1 id="standbyTitle">VISION ONLINE<span class="cursor">_</span></h1>
+       <p class="standby-help" id="standbyHelp">カメラを起動するか、画像を読み込んでください</p>
+     </div>
+     <div class="center-reticle" id="reticle" aria-hidden="true"><span class="axis axis-x"></span><span class="axis axis-y"></span><span class="reticle-dot"></span></div>
+     <div class="telemetry-lines" aria-hidden="true"><span>CAM SYSTEM // OPTICAL SENSOR</span><span id="feedModeTag">NO SIGNAL</span></div>
+   </div>
+
+   <header class="topbar">
+     <div class="brand">
+       <div class="brand-mark" aria-hidden="true"><span></span></div>
+       <div class="brand-copy"><div class="brand-name">A.R.C.<span class="brand-suffix">// 07</span></div><div class="brand-subtitle">ADVANCED RECONNAISSANCE CORE</div></div>
+     </div>
+     <div class="header-center"><span class="micro">OPTICAL INTELLIGENCE</span><span class="system-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+     <div class="top-status"><span class="live-dot" id="liveDot"></span><span id="statusText">STANDBY</span><span class="header-time" id="clock">--:--:--</span></div>
+   </header>
+
+   <aside class="sidebar-left">
+     <div class="panel-label"><span class="label-ornament">01</span> SYSTEM OVERVIEW <span class="end-line"></span></div>
+     <section class="readout health">
+       <div class="readout-title">AI PROCESSOR <span id="modelTag">OFFLINE</span></div>
+       <div class="cpu-visual"><span class="cpu-ring"></span><span class="cpu-core" id="cpuCore">AI</span></div>
+       <div class="micro-data"><span>ON-DEVICE</span><span id="inferenceMs">-- ms</span></div>
+     </section>
+     <div class="panel-divider"></div>
+     <div class="mini-grid">
+       <div class="mini-readout"><span>DETECTED</span><b id="countReadout">00</b><small>OBJECTS</small></div>
+       <div class="mini-readout"><span>PROCESSING</span><b id="fpsReadout">--</b><small>FPS / AI</small></div>
+     </div>
+     <div class="side-caption">VISION ANALYSIS / LOCAL ENGINE</div>
+     <div class="signal-bars" id="signalBars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+   </aside>
+
+   <aside class="sidebar-right" id="analysisPanel">
+     <div class="panel-label"><span class="label-ornament">02</span> TARGET INTELLIGENCE <span class="end-line"></span></div>
+     <div class="target-top"><span class="target-heading">PRIMARY TARGET</span><span class="target-pill" id="targetState">NO TARGET</span></div>
+     <div class="target-name" id="targetName">— — —</div>
+     <div class="target-latin" id="targetLatin">AWAITING ACQUISITION</div>
+     <div class="confidence-row"><span>IDENTIFICATION CONFIDENCE</span><span class="percent" id="confidenceText">--%</span></div>
+     <div class="confidence-meter"><div id="confidenceBar"></div></div>
+     <div class="target-stats">
+       <div><span>SCREEN OCCUPANCY</span><strong id="areaText">—</strong></div>
+       <div><span>SCREEN POSITION</span><strong id="positionText">—</strong></div>
+       <div><span>TRACK ID</span><strong id="trackText">—</strong></div>
+       <div><span>DETECTION BOX</span><strong id="boxText">—</strong></div>
+     </div>
+     <p class="analysis-note" id="analysisNote">検出された対象をタップするとロックできます。距離・素材・危険度などは、このモデルからは判定できません。</p>
+     <div class="analysis-bottom"><span class="tiny-pulse"></span><span id="analysisFooter">WAITING FOR INPUT</span></div>
+   </aside>
+
+   <div class="objects-panel" id="objectsPanel"><div class="objects-label">DETECTED OBJECTS <span id="objectsCounter">00</span></div><div class="objects-list" id="objectsList"><span class="empty-objects">NO OBJECTS TRACKED</span></div></div>
+   <div class="coord-left">A.R.C. / OPTICS v1.0 · LOCAL PROCESSING</div><div class="coord-right" id="resolutionTag">SENSOR: UNAVAILABLE</div>
+
+   <div class="bottom-bar">
+     <div class="bottom-primary">
+       <button class="btn btn-primary" id="btnCamera"><span class="btn-icon" aria-hidden="true">◉</span><span id="cameraText">カメラを起動</span><small>LIVE SCAN</small></button>
+       <button class="btn btn-secondary" id="btnImage"><span class="btn-icon" aria-hidden="true">▣</span><span>画像を解析</span><small>LOCAL FILE</small></button>
+       <button class="btn btn-icon-only" id="btnFlip" title="前面／背面カメラ切り替え" aria-label="カメラの切り替え" disabled><svg viewBox="0 0 24 24"><path d="M4 7h12l-3-3m3 3-3 3M20 17H8l3 3m-3-3 3-3"/></svg></button>
+       <button class="btn btn-icon-only" id="btnSnapshot" title="解析画面を保存" aria-label="スクリーンショット保存" disabled><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button>
+     </div>
+     <div class="bottom-settings">
+       <label class="threshold-control" for="threshold"><span>検出感度 <em id="thresholdLabel">35%</em></span><input type="range" id="threshold" min="20" max="75" step="5" value="35"></label>
+       <button class="chip active" id="btnTracking" aria-pressed="true"><span class="chip-dot"></span> AUTO LOCK</button>
+       <button class="chip" id="btnPause" aria-pressed="false" disabled><span class="chip-dot"></span> 一時停止</button>
+       <button class="chip" id="btnAudio" aria-pressed="false"><span class="chip-dot"></span> SOUND OFF</button>
+     </div>
+   </div>
+   <input type="file" id="filePicker" accept="image/*" hidden>
+   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+   <div class="boot-info" id="bootInfo"><span class="boot-info-mark">●</span><span id="bootInfoText">AI エンジンは初回起動時にダウンロードされます。解析は端末内で実行します。</span><button id="closeInfo" aria-label="閉じる">×</button></div>
+ </main>
+ <script type="module" src="./app.js"></script>
+</body>
 </html>

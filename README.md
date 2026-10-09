@@ -1,49 +1,59 @@
-# Assist Camera
+# A.R.C. VISION — Tactical Vision HUD
 
-Vercel 公開を前提にしたスマホ向け高機能カメラ Web アプリです。Vite + React + TypeScript の静的 SPA として動き、顔検出・顔追跡・登録済み人物との照合・録画・撮影アシストを端末内で処理します。
+**スマホのブラウザー上で直接AI物体検出を行う、HUD型の静的Webサイトです。** サーバーでの画像解析・ユーザー登録・APIキーは不要です。
 
-## セットアップ
+## 起動方法
+
+1. このフォルダーを **HTTPS対応の静的サイトホスティング**（Vercel、GitHub Pages、Netlifyなど）にそのまま配置します。
+2. iPhone / AndroidのSafariまたはChromeで、公開URLを開きます。
+3. 「カメラを起動」を押し、カメラの使用を許可します。映像の物体検出が始まります。
+4. 検出枠または一覧の対象をタップすると、ターゲットロックできます。「AUTO LOCK」で自動選択に戻ります。
+5. 画像ファイルを選んで、カメラなしで解析することもできます。
+
+> `index.html` をスマホのファイルアプリから直接開く `file://` 方式は、カメラのアクセス・ES Modules・Service Workerの制限を受けるため、正常動作を保証できません。スマホからカメラを使うときは **HTTPS必須** です。PCの開発時は localhost でも使用できます。
+
+### ローカル開発（PC）
+
+Pythonがあればプロジェクトフォルダー内で次を実行します。
 
 ```bash
-npm install
-npm run dev
-npm run build
-npm run preview
+python -m http.server 8000
 ```
 
-カメラは HTTPS または localhost でのみ起動します。
+そのPCのブラウザーで `http://localhost:8000/` を開きます。スマホから `http://PCのLAN内IP:8000/` にアクセスしても、通常はカメラ権限を取得できません。スマホ実機確認にはHTTPS公開を利用してください。
 
-## 実装済み
+## 実際の機能
 
-- 写真 / 動画 / 捜索 / 設定モード
-- MediaPipe Face Detector / Face Landmarker を Web Worker で実行
-- 最大 8 人までの検出設計、初期は通常モード 5 人
-- trackId 付き顔追跡、IoU / 中心距離 / サイズ差 / ランドマーク / 特徴量類似度による対応付け
-- One Euro Filter、EMA、速度予測、lost frame tolerance
-- object-fit: cover、CSS 表示サイズ、ズーム、フロントカメラ反転を考慮した顔枠座標変換
-- 1 人ロックオン、複数ロック、顔タップメニュー
-- 動作モード: 省電力 / 通常 / 最大
-- 動画画質: 軽量 / 標準 / 高画質 / 最大
-- 録画、録画確認、ダウンロード、履歴メタデータ
-- 端末内 IndexedDB への登録済み人物DB
-- DB照合は登録済み人物に対してのみ実行
-- 未登録人物の自動名前表示なし
-- 顔分析は明るさ、ブレ、顔向き、ピント、登録品質、追跡安定度に限定
-- 開発者モード: FPS、推論時間、worker latency、trackId、confidence、IoU、lost frame count、座標変換ログ
-- PWA manifest / Service Worker / Vercel headers
+- スマホのカメラによるオンデバイス物体検出（MediaPipe ObjectDetector / EfficientDet-Lite0 int8）
+- COCOの一般的な約80分類の日本語表示、検出確率、物体検出の矩形
+- 検出結果からの簡易ID付与・短期位置追跡（人物同定・再識別の機能はありません）
+- 対象ロック、画面内占有率、相対位置、バウンディングボックスのピクセルサイズ
+- 感度設定、解析停止、フロント／リアカメラ切り替え、効果音ON/OFF
+- ローカル画像の分析、分析画像の書き出し、スマートフォン向けレスポンシブUI
+- Service Workerのキャッシュ（使用するブラウザーの容量・保持方針に依存）
 
-## モデル配置
+## プライバシーと通信
 
-静的配信されるモデルと WASM は以下に置いています。
+- **入力された写真やカメラ映像を、このサイトのコードから外部サーバーへアップロードしません。** 推論はスマホ内のWASM/CPU上で実行します。
+- 初回起動時に **MediaPipeライブラリ・WASM・学習済みAIモデルを外部URLから取得** します。読み込みにネット通信が必要です。
+- MediaPipe自体の製品通知では、パフォーマンス・使用状況のメトリクスがGoogleへ送信される場合があると説明されています。完全な無通信を保証するものではありません。
+- オフライン再利用は一度読み込みが完了してキャッシュが残っている場合に限り試せます。確実なオフライン運用は、ライブラリ・WASM・モデルを同じサーバー上へ配置した構成に変更してください。
 
-- `public/models/blaze_face_short_range.tflite`
-- `public/models/face_landmarker.task`
-- `public/wasm/*`
+## 分析結果の限界
 
-## プライバシー設計
+検出信頼度は「正解率そのもの」を意味しません。追跡IDは連続フレーム間の矩形位置を使った**簡易表示用ID**であり、物体が隠れたり大きく動くと変わります。画面占有率は検出矩形の面積に基づく割合で、物体の実面積・距離とは異なります。危険度・材質・温度・重量・人物の身元は判断していません。
 
-画像、動画フレーム、顔特徴量、登録人物情報はサーバーへ送信しません。Vercel は静的ファイル配信のみです。顔照合は「登録済み人物との類似信頼度」であり、未登録人物を特定する表示、年齢・性別・感情・民族性・健康状態などの推定は実装していません。
+モデル：Google AI Edge / MediaPipe Tasks Vision（Apache-2.0）
 
-## Vercel
+ライブラリ：`@mediapipe/tasks-vision@0.10.32`（固定）
 
-`vercel.json` で Vite の `dist` 出力、SPA rewrite、WASM とモデルの長期キャッシュ、カメラ向け Permissions-Policy、CSP を設定済みです。
+モデル：`efficientdet_lite0/int8/1`（Googleが公開する物体認識モデル）
+
+## ファイル
+
+- `index.html` — アプリ画面
+- `styles.css` — HUDデザイン、スマホ対応
+- `app.js` — AIロード、認識、描画、操作
+- `sw.js` — 静的アセットと取得したモデルのキャッシュ
+- `manifest.webmanifest` — ホーム画面アプリ情報
+- `assets/icon.svg` — アプリ用ロゴ
